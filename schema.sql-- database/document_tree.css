@@ -1,0 +1,90 @@
+/* src/styles/DocumentTree.css */
+.document-tree {
+  user-select: none;
+}
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin: 2px 8px;
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+.tree-item:hover {
+  background-color: #e9ecef;
+}
+
+.tree-item.active {
+  background-color: #007bff;
+  color: white;
+}
+
+.folder-icon,
+.document-icon {
+  margin-right: 8px;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.item-name {
+  flex: 1;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rename-input {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid #007bff;
+  border-radius: 3px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.rename-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.context-menu {
+  position: absolute;
+  top: 100%;
+  right: 8px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 150px;
+  overflow: hidden;
+}
+
+.context-menu button {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.context-menu button:hover {
+  background-color: #f0f0f0;
+}
+
+.tree-folder {
+  margin-bottom: 4px;
+}
+
+.folder-item {
+  font-weight: 500;
+}
