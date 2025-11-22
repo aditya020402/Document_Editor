@@ -1,0 +1,131 @@
+/* src/styles/Sidebar.css */
+.sidebar {
+  width: 400px;
+  padding: 20px;
+  background-color: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  border-left: 2px solid #e0e0e0;
+}
+
+.sidebar h3 {
+  margin: 0;
+  color: #333;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.selected-context {
+  padding: 12px;
+  background-color: #e3f2fd;
+  border-radius: 6px;
+  border-left: 4px solid #2196f3;
+}
+
+.selected-context strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #1976d2;
+  font-size: 14px;
+}
+
+.selected-context p {
+  margin: 0;
+  font-size: 14px;
+  color: #555;
+  line-height: 1.5;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.prompt-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.prompt-section textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.prompt-section textarea:focus {
+  outline: none;
+  border-color: #2196f3;
+  box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+}
+
+.prompt-section button {
+  width: 100%;
+  padding: 12px;
+  background-color: #2196f3;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.prompt-section button:hover:not(:disabled) {
+  background-color: #1976d2;
+}
+
+.prompt-section button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.response-section {
+  padding: 16px;
+  background-color: white;
+  border-radius: 6px;
+  border: 1px solid #ddd;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.response-section strong {
+  display: block;
+  margin-bottom: 12px;
+  color: #333;
+  font-size: 14px;
+}
+
+.response-content {
+  margin: 0 0 16px 0;
+  padding: 12px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #333;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.apply-btn {
+  width: 100%;
+  padding: 10px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.apply-btn:hover {
+  background-color: #45a049;
+}
