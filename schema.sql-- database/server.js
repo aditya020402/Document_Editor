@@ -1,8 +1,12 @@
-// server.js
+// server.js (Add after other requires)
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 require('dotenv').config();
 
 const pool = require('./config/database');
@@ -25,6 +29,40 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Create uploads directory if it doesn't exist
+const uploadsDir = path.join(__dirname, 'uploads', 'images');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Serve static files from uploads directory
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Configure multer for image uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueName = crypto.randomBytes(16).toString('hex');
+    const ext = path.extname(file.originalname);
+    cb(null, `${uniqueName}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only images are allowed.'));
+    }
+  }
+});
+
 // Store active sessions
 const documentSessions = new Map();
 const userSockets = new Map();
@@ -38,7 +76,118 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/folders', folderRoutes);
 app.use('/api/ai', aiRoutes);
 
-// WebSocket handling
+// Image upload endpoint
+app.post('/api/images/upload', upload.single('image'), async (req, res) => {
+  try {
+    const { userId, documentId } = req.body;
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Save image metadata to database
+    const query = `
+      INSERT INTO images (user_id, document_id, filename, original_filename, 
+                         file_path, file_size, mime_type)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `;
+
+    const filePath = `/uploads/images/${file.filename}`;
+    const result = await pool.query(query, [
+      parseInt(userId),
+      documentId ? parseInt(documentId) : null,
+      file.filename,
+      file.originalname,
+      filePath,
+      file.size,
+      file.mimetype
+    ]);
+
+    const imageRecord = result.rows[0];
+
+    // Return full URL for the image
+    const imageUrl = `${req.protocol}://${req.get('host')}${filePath}`;
+
+    res.json({
+      success: true,
+      image: {
+        id: imageRecord.id,
+        url: imageUrl,
+        filename: imageRecord.filename,
+        originalFilename: imageRecord.original_filename,
+        size: imageRecord.file_size
+      }
+    });
+
+    console.log(`Image uploaded: ${file.filename} by user ${userId}`);
+  } catch (error) {
+    console.error('Image upload error:', error);
+    res.status(500).json({ error: 'Failed to upload image' });
+  }
+});
+
+// Get images for a document
+app.get('/api/images/document/:documentId', async (req, res) => {
+  try {
+    const { documentId } = req.params;
+
+    const query = `
+      SELECT id, filename, original_filename, file_path, file_size, 
+             mime_type, created_at
+      FROM images
+      WHERE document_id = $1
+      ORDER BY created_at DESC
+    `;
+
+    const result = await pool.query(query, [parseInt(documentId)]);
+
+    const images = result.rows.map(img => ({
+      ...img,
+      url: `${req.protocol}://${req.get('host')}${img.file_path}`
+    }));
+
+    res.json({ images });
+  } catch (error) {
+    console.error('Error fetching images:', error);
+    res.status(500).json({ error: 'Failed to fetch images' });
+  }
+});
+
+// Delete image
+app.delete('/api/images/:imageId', async (req, res) => {
+  try {
+    const { imageId } = req.params;
+
+    // Get image info
+    const selectQuery = 'SELECT * FROM images WHERE id = $1';
+    const selectResult = await pool.query(selectQuery, [parseInt(imageId)]);
+
+    if (selectResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    const image = selectResult.rows[0];
+
+    // Delete file from file system
+    const filePath = path.join(__dirname, 'uploads', 'images', image.filename);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    // Delete from database
+    const deleteQuery = 'DELETE FROM images WHERE id = $1';
+    await pool.query(deleteQuery, [parseInt(imageId)]);
+
+    res.json({ success: true, message: 'Image deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting image:', error);
+    res.status(500).json({ error: 'Failed to delete image' });
+  }
+});
+
+// WebSocket handling (keep existing code)
 io.on('connection', (socket) => {
   console.log(`Client connected: ${socket.id}`);
 
@@ -296,6 +445,7 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`WebSocket server ready`);
+  console.log(`Uploads directory: ${uploadsDir}`);
 });
 
 process.on('SIGTERM', async () => {
