@@ -172,3 +172,35 @@
 .editor-text-underline {
   text-decoration: underline;
 }
+
+/* Add to src/styles/AIEditor.css */
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background-color: #dee2e6;
+  margin: 0 8px;
+}
+
+.toolbar-btn {
+  padding: 6px 12px;
+  border: 1px solid #ced4da;
+  background: white;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+  min-width: 36px;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.toolbar-btn:hover {
+  background-color: #e9ecef;
+}
+
+.toolbar-btn:active {
+  background-color: #dee2e6;
+}
+
