@@ -71,10 +71,14 @@ const userSockets = new Map();
 const documentRoutes = require('./routes/documents');
 const folderRoutes = require('./routes/folders');
 const aiRoutes = require('./routes/ai');
+const publishRoutes = require('./routes/publish');
+
 
 app.use('/api/documents', documentRoutes);
 app.use('/api/folders', folderRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/documents', publishRoutes);
+
 
 // Image upload endpoint
 app.post('/api/images/upload', upload.single('image'), async (req, res) => {
