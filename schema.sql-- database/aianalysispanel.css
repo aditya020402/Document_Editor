@@ -1,0 +1,16 @@
+.ai-panel { padding: 12px; border-top: 1px solid #ddd; background-color: #fafafa; max-height: 100%; overflow-y: auto; }
+.ai-panel-header { display: flex; justify-content: space-between; align-items: center; }
+.ai-refresh-btn { border: none; background: none; cursor: pointer; font-size: 16px; }
+.ai-panel-section { margin-top: 12px; }
+.ai-panel-loading, .ai-panel-empty { margin-top: 8px; font-size: 14px; color: #666; }
+.ai-panel-error { margin-top: 8px; font-size: 13px; color: #c00; }
+.ai-score { font-size: 14px; }
+.ai-text-block { background: #fff; border-radius: 4px; padding: 8px; border: 1px solid #ddd; font-size: 13px; white-space: pre-wrap; }
+.ai-code-block { background: #1e1e1e; color: #f8f8f2; border-radius: 4px; padding: 8px; font-size: 12px; overflow-x: auto; }
+.ai-suggestion { margin-top: 8px; padding: 8px; border-radius: 4px; border: 1px solid #ddd; background: #fff; }
+.ai-suggestion.applied { opacity: 0.7; border-color: #28a745; }
+.ai-suggestion-title { font-weight: 600; margin-bottom: 4px; display: flex; justify-content: space-between; }
+.ai-suggestion-applied { font-size: 11px; color: #28a745; margin-left: 8px; }
+.ai-suggestion-text { font-size: 13px; margin-top: 4px; }
+.ai-suggestion-actions { margin-top: 6px; }
+.ai-suggestion-actions button { padding: 4px 8px; font-size: 13px; }
