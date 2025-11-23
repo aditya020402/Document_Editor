@@ -1,4 +1,4 @@
-// src/components/AIEditor.jsx (Update the plugins section)
+// src/components/AIEditor.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
@@ -8,12 +8,16 @@ import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import LexicalErrorBoundary from '@lexical/react/LexicalErrorBoundary';
 import { $getSelection, $isRangeSelection, $getRoot } from 'lexical';
+
 import ToolbarPlugin from './ToolbarPlugin';
 import ImagesPlugin from './ImagesPlugin';
 import Sidebar from './Sidebar';
+import TagsEditor from './TagsEditor';
+import AiAnalysisPanel from './AiAnalysisPanel';
 import { socketService } from '../utils/socket';
 import { ImageNode } from '../nodes/ImageNode';
-import './AIEditor.css';
+
+import '../styles/AIEditor.css';
 
 function LoadStatePlugin({ content }) {
   const [editor] = useLexicalComposerContext();
@@ -31,7 +35,7 @@ function LoadStatePlugin({ content }) {
     }
   }, [content, editor]);
 
-  // Reset when document changes
+  // reset when content (i.e., document) changes
   useEffect(() => {
     hasLoadedRef.current = false;
   }, [content]);
@@ -45,10 +49,15 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
   const [isSaving, setIsSaving] = useState(false);
   const [activeUsers, setActiveUsers] = useState(1);
   const [isConnected, setIsConnected] = useState(false);
+  const [aiJob, setAiJob] = useState(null);
+  const [aiStatus, setAiStatus] = useState(null);
+
   const editorStateRef = useRef(null);
   const saveTimeoutRef = useRef(null);
   const isRemoteUpdateRef = useRef(false);
   const editorRef = useRef(null);
+
+  const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
   const theme = {
     paragraph: 'editor-paragraph',
@@ -66,42 +75,40 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
     nodes: [ImageNode],
   };
 
+  // WebSocket connection
   useEffect(() => {
-    if (!userId || !socketService.socket) return;
+    if (!userId) return;
 
-    socketService.socket.on('authenticated', () => {
+    const socket = socketService.connect(userId);
+
+    socket.on('authenticated', () => {
       setIsConnected(true);
     });
 
     return () => {
-      if (socketService.socket) {
-        socketService.socket.off('authenticated');
-      }
+      socketService.disconnect();
     };
   }, [userId]);
 
+  // Join/leave document rooms for collaboration
   useEffect(() => {
     if (!document?.id || !userId || !isConnected) return;
 
     socketService.joinDocument(document.id, userId, (data) => {
-      console.log('Document loaded:', data);
       setActiveUsers(data.activeUsers);
     });
 
     socketService.on('document-updated', (data) => {
       if (data.userId !== userId) {
-        console.log('Remote update received');
         isRemoteUpdateRef.current = true;
       }
     });
 
     socketService.on('user-joined', (data) => {
-      console.log('User joined:', data);
       setActiveUsers(data.activeUsers);
     });
 
     socketService.on('user-left', (data) => {
-      console.log('User left:', data);
       setActiveUsers(data.activeUsers);
     });
 
@@ -112,6 +119,23 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
       socketService.off('user-left');
     };
   }, [document?.id, userId, isConnected]);
+
+  // Load AI status for this document
+  const fetchAiStatus = async () => {
+    if (!document?.id) return;
+    try {
+      const res = await fetch(`${apiUrl}/documents/${document.id}/ai`);
+      const data = await res.json();
+      setAiJob(data.job || null);
+      setAiStatus(data.job?.status || null);
+    } catch (e) {
+      console.error('Failed to load AI status', e);
+    }
+  };
+
+  useEffect(() => {
+    fetchAiStatus();
+  }, [document?.id]);
 
   const handleTextSelection = () => {
     const selection = window.getSelection();
@@ -157,15 +181,26 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
       document.name,
       userId,
       (response) => {
-        console.log('Document saved:', response);
         setIsSaving(false);
-        
-        if (onDocumentChange) {
+        if (onDocumentChange && response.document) {
           onDocumentChange(response.document);
         }
       }
     );
   };
+
+  // Manual save with Ctrl+S
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [document]);
 
   const handleApplyText = (text) => {
     if (editorRef.current) {
@@ -188,23 +223,42 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
     }
   };
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        handleSave();
+  // Publish or resubmit for AI analysis
+  const handlePublish = async () => {
+    if (!document?.id) return;
+    try {
+      const res = await fetch(`${apiUrl}/documents/${document.id}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAiStatus('pending');
+        setAiJob({ id: data.jobId, status: 'pending' });
+        setTimeout(fetchAiStatus, 3000);
+      } else {
+        alert('Failed to publish');
       }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [document]);
+    } catch (e) {
+      console.error('Publish failed', e);
+      alert('Failed to publish');
+    }
+  };
 
   return (
     <div className="editor-wrapper">
       <div className="editor-header">
-        <h2>{document?.name || 'No Document Open'}</h2>
+        <div className="editor-header-main">
+          <h2>{document?.name || 'No Document Open'}</h2>
+          <TagsEditor documentId={document?.id} />
+        </div>
         <div className="editor-status">
+          {aiStatus && (
+            <span className="ai-status">
+              AI: {aiStatus}
+            </span>
+          )}
           <span className={`connection-status ${isConnected ? 'connected' : 'disconnected'}`}>
             {isConnected ? '🟢 Connected' : '🔴 Disconnected'}
           </span>
@@ -212,6 +266,9 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
           {isSaving && <span className="saving-indicator">💾 Saving...</span>}
           <button onClick={handleSave} className="save-btn" disabled={!isConnected}>
             Save
+          </button>
+          <button onClick={handlePublish} className="publish-btn" disabled={!document?.id}>
+            {aiJob ? 'Resubmit & Re-analyze' : 'Publish & Analyze'}
           </button>
         </div>
       </div>
@@ -237,7 +294,14 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
             </div>
           </LexicalComposer>
         </div>
-        <Sidebar selectedText={selectedText} onApplyText={handleApplyText} />
+
+        <div className="editor-sidebars">
+          <Sidebar selectedText={selectedText} onApplyText={handleApplyText} />
+          <AiAnalysisPanel
+            documentId={document?.id}
+            onSuggestionApplied={fetchAiStatus}
+          />
+        </div>
       </div>
     </div>
   );
