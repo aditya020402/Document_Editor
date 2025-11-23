@@ -1,4 +1,4 @@
-// src/components/AIEditor.jsx
+// src/components/AIEditor.jsx (Update the plugins section)
 import React, { useState, useEffect, useRef } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
@@ -30,6 +30,11 @@ function LoadStatePlugin({ content }) {
       }
     }
   }, [content, editor]);
+
+  // Reset when document changes
+  useEffect(() => {
+    hasLoadedRef.current = false;
+  }, [content]);
 
   return null;
 }
@@ -214,7 +219,7 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
       <div className="editor-container">
         <div className="editor-main">
           <LexicalComposer initialConfig={initialConfig} key={document?.id}>
-            <ToolbarPlugin />
+            <ToolbarPlugin userId={userId} documentId={document?.id} />
             <div className="editor-inner" onMouseUp={handleTextSelection}>
               <RichTextPlugin
                 contentEditable={<ContentEditable className="editor-input" />}
@@ -226,7 +231,7 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
                 ErrorBoundary={LexicalErrorBoundary}
               />
               <HistoryPlugin />
-              <ImagesPlugin />
+              <ImagesPlugin userId={userId} documentId={document?.id} />
               <OnChangePlugin onChange={handleEditorChange} />
               <LoadStatePlugin content={document?.content} />
             </div>
