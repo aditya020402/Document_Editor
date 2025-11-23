@@ -67,4 +67,58 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
+// PUT /api/documents/:id/tags
+router.put('/:id/tags', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const documentId = parseInt(req.params.id, 10);
+    const { tags } = req.body; // array of strings
+
+    if (!Array.isArray(tags)) {
+      return res.status(400).json({ error: 'tags must be an array' });
+    }
+
+    await client.query('BEGIN');
+
+    await client.query(
+      'DELETE FROM document_tags WHERE document_id = $1',
+      [documentId]
+    );
+
+    for (const tag of tags) {
+      const trimmed = String(tag).trim();
+      if (!trimmed) continue;
+      await client.query(
+        'INSERT INTO document_tags (document_id, tag) VALUES ($1, $2)',
+        [documentId, trimmed]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('Error saving tags', err);
+    res.status(500).json({ error: 'Failed to save tags' });
+  } finally {
+    client.release();
+  }
+});
+
+// GET /api/documents/:id/tags
+router.get('/:id/tags', async (req, res) => {
+  try {
+    const documentId = parseInt(req.params.id, 10);
+    const tRes = await pool.query(
+      'SELECT tag FROM document_tags WHERE document_id = $1 ORDER BY tag ASC',
+      [documentId]
+    );
+    res.json({ tags: tRes.rows.map(r => r.tag) });
+  } catch (err) {
+    console.error('Error loading tags', err);
+    res.status(500).json({ error: 'Failed to load tags' });
+  }
+});
+
+
 module.exports = router;
