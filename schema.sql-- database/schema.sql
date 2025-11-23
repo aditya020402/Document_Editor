@@ -39,6 +39,24 @@ CREATE TABLE IF NOT EXISTS document_versions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- database/schema.sql (Add this to your existing schema)
+
+CREATE TABLE IF NOT EXISTS images (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+    filename VARCHAR(255) NOT NULL,
+    original_filename VARCHAR(255) NOT NULL,
+    file_path VARCHAR(512) NOT NULL,
+    file_size INTEGER NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_images_document_id ON images(document_id);
+CREATE INDEX idx_images_user_id ON images(user_id);
+
+
 CREATE INDEX idx_document_versions_document_id ON document_versions(document_id);
 CREATE INDEX idx_document_versions_created_at ON document_versions(created_at);
 
