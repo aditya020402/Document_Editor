@@ -1,0 +1,126 @@
+-- Users table
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash TEXT,
+    role VARCHAR(32) NOT NULL DEFAULT 'user',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Folders table
+CREATE TABLE IF NOT EXISTS folders (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    parent_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Documents table
+CREATE TABLE IF NOT EXISTS documents (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    content TEXT,
+    folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Document versions (history)
+CREATE TABLE IF NOT EXISTS document_versions (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    content TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+
+-- Images table
+CREATE TABLE IF NOT EXISTS images (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    document_id INTEGER REFERENCES documents(id) ON DELETE CASCADE,
+    filename VARCHAR(255) NOT NULL,
+    original_filename VARCHAR(255),
+    file_path TEXT NOT NULL,
+    file_size INTEGER,
+    mime_type VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Document tags
+CREATE TABLE IF NOT EXISTS document_tags (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    tag VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI analysis jobs
+CREATE TABLE IF NOT EXISTS ai_analysis_jobs (
+    id SERIAL PRIMARY KEY,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    error_message TEXT
+);
+
+-- AI analysis results
+CREATE TABLE IF NOT EXISTS ai_analysis_results (
+    id SERIAL PRIMARY KEY,
+    job_id INTEGER NOT NULL REFERENCES ai_analysis_jobs(id) ON DELETE CASCADE,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    automatable_score INTEGER,
+    raw_parsed_content JSONB,
+    cleaned_content TEXT,
+    improved_document TEXT,
+    automation_script TEXT,
+    metadata JSONB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI suggestions
+CREATE TABLE IF NOT EXISTS ai_suggestions (
+    id SERIAL PRIMARY KEY,
+    job_id INTEGER NOT NULL REFERENCES ai_analysis_jobs(id) ON DELETE CASCADE,
+    document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    type VARCHAR(64) NOT NULL,
+    title VARCHAR(255),
+    target_path TEXT,
+    original_text TEXT,
+    suggested_text TEXT,
+    applied BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_folders_user_id ON folders(user_id);
+CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
+CREATE INDEX IF NOT EXISTS idx_documents_folder_id ON documents(folder_id);
+CREATE INDEX IF NOT EXISTS idx_document_versions_document_id ON document_versions(document_id);
+CREATE INDEX IF NOT EXISTS idx_images_user_id ON images(user_id);
+CREATE INDEX IF NOT EXISTS idx_images_document_id ON images(document_id);
+CREATE INDEX IF NOT EXISTS idx_document_tags_document_id ON document_tags(document_id);
+CREATE INDEX IF NOT EXISTS idx_document_tags_tag ON document_tags(tag);
+CREATE INDEX IF NOT EXISTS idx_ai_analysis_jobs_document_id ON ai_analysis_jobs(document_id);
+CREATE INDEX IF NOT EXISTS idx_ai_analysis_jobs_status ON ai_analysis_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_ai_analysis_results_document_id ON ai_analysis_results(document_id);
+CREATE INDEX IF NOT EXISTS idx_ai_suggestions_document_id ON ai_suggestions(document_id);
+CREATE INDEX IF NOT EXISTS idx_ai_suggestions_job_id ON ai_suggestions(job_id);
+
+
+
+INSERT INTO users (name, email, password_hash, role) 
+VALUES ('Admin User', 'admin@example.com', '$2b$10$placeholder', 'admin');
+
+INSERT INTO users (name, email, password_hash, role) 
+VALUES ('Test Writer', 'writer@example.com', '$2b$10$placeholder', 'user');
+
+
+
+
