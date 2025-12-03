@@ -15,6 +15,7 @@ import Sidebar from './Sidebar';
 import TagsEditor from './TagsEditor';
 import AiAnalysisPanel from './AiAnalysisPanel';
 import { socketService } from '../utils/socket';
+import { authHeader } from '../services/authService';
 import { ImageNode } from '../nodes/ImageNode';
 
 import '../styles/AIEditor.css';
@@ -75,56 +76,82 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
     nodes: [ImageNode],
   };
 
-  // WebSocket connection
+  // WebSocket connection - establishes once on mount
   useEffect(() => {
-    if (!userId) return;
+    const socket = socketService.connect();
 
-    const socket = socketService.connect(userId);
+    if (!socket) {
+      // No token found - user will be redirected to login
+      return;
+    }
 
-    socket.on('authenticated', () => {
+    socket.on('authenticated', (data) => {
+      console.log('✅ Authenticated as user:', data.userId);
       setIsConnected(true);
+    });
+
+    socket.on('connect', () => {
+      setIsConnected(true);
+    });
+
+    socket.on('disconnect', () => {
+      setIsConnected(false);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error.message);
+      setIsConnected(false);
     });
 
     return () => {
       socketService.disconnect();
     };
-  }, [userId]);
+  }, []);
 
   // Join/leave document rooms for collaboration
   useEffect(() => {
-    if (!document?.id || !userId || !isConnected) return;
+    if (!document?.id || !isConnected) return;
 
-    socketService.joinDocument(document.id, userId, (data) => {
-      setActiveUsers(data.activeUsers);
+    socketService.joinDocument(document.id, (data) => {
+      if (data.error) {
+        console.error('Failed to join document:', data.error);
+        alert('Failed to access document');
+        return;
+      }
+      setActiveUsers(data.activeUsers || 1);
     });
 
     socketService.on('document-updated', (data) => {
-      if (data.userId !== userId) {
-        isRemoteUpdateRef.current = true;
-      }
+      // Mark as remote update so we don't re-broadcast it
+      isRemoteUpdateRef.current = true;
     });
 
     socketService.on('user-joined', (data) => {
-      setActiveUsers(data.activeUsers);
+      setActiveUsers(data.activeUsers || 1);
     });
 
     socketService.on('user-left', (data) => {
-      setActiveUsers(data.activeUsers);
+      setActiveUsers(data.activeUsers || 1);
     });
 
     return () => {
-      socketService.leaveDocument(document.id, userId);
+      socketService.leaveDocument(document.id);
       socketService.off('document-updated');
       socketService.off('user-joined');
       socketService.off('user-left');
     };
-  }, [document?.id, userId, isConnected]);
+  }, [document?.id, isConnected]);
 
   // Load AI status for this document
   const fetchAiStatus = async () => {
     if (!document?.id) return;
     try {
-      const res = await fetch(`${apiUrl}/documents/${document.id}/ai`);
+      const res = await fetch(`${apiUrl}/documents/${document.id}/ai`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeader(),
+        },
+      });
       const data = await res.json();
       setAiJob(data.job || null);
       setAiStatus(data.job?.status || null);
@@ -155,11 +182,12 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
     editorStateRef.current = newEditorState;
     editorRef.current = editor;
 
-    if (document?.id) {
+    if (document?.id && isConnected) {
       const content = JSON.stringify(newEditorState.toJSON());
-      socketService.sendDocumentChange(document.id, content, userId, null);
+      socketService.sendDocumentChange(document.id, content, null);
     }
 
+    // Debounced autosave
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
@@ -170,7 +198,7 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
   };
 
   const handleSave = async () => {
-    if (!document?.id || !editorStateRef.current) return;
+    if (!document?.id || !editorStateRef.current || !isConnected) return;
 
     setIsSaving(true);
     const content = JSON.stringify(editorStateRef.current.toJSON());
@@ -179,10 +207,12 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
       document.id,
       content,
       document.name,
-      userId,
       (response) => {
         setIsSaving(false);
-        if (onDocumentChange && response.document) {
+        if (response.error) {
+          console.error('Save error:', response.error);
+          alert('Failed to save document: ' + response.error);
+        } else if (onDocumentChange && response.document) {
           onDocumentChange(response.document);
         }
       }
@@ -200,7 +230,7 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [document]);
+  }, [document, isConnected]);
 
   const handleApplyText = (text) => {
     if (editorRef.current) {
@@ -229,20 +259,23 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
     try {
       const res = await fetch(`${apiUrl}/documents/${document.id}/publish`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeader(),
+        },
       });
       const data = await res.json();
       if (data.success) {
         setAiStatus('pending');
         setAiJob({ id: data.jobId, status: 'pending' });
+        // Poll for status after 3 seconds
         setTimeout(fetchAiStatus, 3000);
       } else {
-        alert('Failed to publish');
+        alert('Failed to publish: ' + (data.error || 'Unknown error'));
       }
     } catch (e) {
       console.error('Publish failed', e);
-      alert('Failed to publish');
+      alert('Failed to publish article');
     }
   };
 
@@ -264,10 +297,10 @@ export default function AIEditor({ document, userId, onDocumentChange }) {
           </span>
           <span className="active-users">👥 {activeUsers}</span>
           {isSaving && <span className="saving-indicator">💾 Saving...</span>}
-          <button onClick={handleSave} className="save-btn" disabled={!isConnected}>
+          <button onClick={handleSave} className="save-btn" disabled={!isConnected || !document?.id}>
             Save
           </button>
-          <button onClick={handlePublish} className="publish-btn" disabled={!document?.id}>
+          <button onClick={handlePublish} className="publish-btn" disabled={!document?.id || !isConnected}>
             {aiJob ? 'Resubmit & Re-analyze' : 'Publish & Analyze'}
           </button>
         </div>
