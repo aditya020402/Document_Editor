@@ -44,6 +44,20 @@ class SocketService {
     }
   }
 
+    handleAuthFailure() {
+    console.warn('⚠️ Authentication failed - redirecting to login');
+    clearAuth(); // Clear token and user from localStorage
+    
+    // Disconnect socket if connected
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+
+    // Redirect to login
+    window.location.href = '/login';
+  }
+
   joinDocument(documentId, userId, callback) {
     this.currentDocument = documentId;
     this.socket.emit('join-document', { documentId, userId });
