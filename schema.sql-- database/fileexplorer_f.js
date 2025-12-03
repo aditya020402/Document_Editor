@@ -1,6 +1,7 @@
 // src/components/FileExplorer.jsx
 import React, { useState, useEffect } from 'react';
 import { socketService } from '../utils/socket';
+import { authHeader } from '../services/authService';
 import DocumentTree from './DocumentTree';
 import './FileExplorer.css';
 
@@ -11,73 +12,158 @@ export default function FileExplorer({ userId, onDocumentSelect, currentDocument
   const [showNewFolderDialog, setShowNewFolderDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [isConnected, setIsConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
+  const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+
+  // Initialize socket connection and setup listeners
   useEffect(() => {
-    if (!userId || !socketService.socket) return;
+    const socket = socketService.connect();
 
-    socketService.socket.on('authenticated', () => {
+    if (!socket) {
+      console.error('Failed to connect socket');
+      setIsLoading(false);
+      return;
+    }
+
+    const handleAuthenticated = () => {
+      console.log('✅ FileExplorer: Socket authenticated');
       setIsConnected(true);
+      setIsLoading(false);
       loadFileStructure();
-    });
+    };
 
-    socketService.socket.on('folder-created', () => {
+    const handleConnect = () => {
+      console.log('✅ FileExplorer: Socket connected');
+      setIsConnected(true);
+      setIsLoading(false);
+    };
+
+    const handleDisconnect = () => {
+      console.log('❌ FileExplorer: Socket disconnected');
+      setIsConnected(false);
+    };
+
+    const handleFolderCreated = () => {
+      console.log('Folder created event received');
       loadFileStructure();
-    });
+    };
 
-    socketService.socket.on('document-created', (data) => {
+    const handleDocumentCreated = (data) => {
+      console.log('Document created event received:', data);
       loadFileStructure();
-      onDocumentSelect(data.document);
-    });
-
-    socketService.socket.on('folder-updated', () => {
-      loadFileStructure();
-    });
-
-    socketService.socket.on('document-deleted', () => {
-      loadFileStructure();
-    });
-
-    socketService.socket.on('folder-deleted', () => {
-      loadFileStructure();
-    });
-
-    return () => {
-      if (socketService.socket) {
-        socketService.socket.off('authenticated');
-        socketService.socket.off('folder-created');
-        socketService.socket.off('document-created');
-        socketService.socket.off('folder-updated');
-        socketService.socket.off('document-deleted');
-        socketService.socket.off('folder-deleted');
+      if (data.document && onDocumentSelect) {
+        onDocumentSelect(data.document);
       }
     };
-  }, [userId]);
 
+    const handleFolderUpdated = () => {
+      loadFileStructure();
+    };
+
+    const handleDocumentDeleted = () => {
+      loadFileStructure();
+    };
+
+    const handleFolderDeleted = () => {
+      loadFileStructure();
+    };
+
+    // Register event listeners
+    socket.on('authenticated', handleAuthenticated);
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('folder-created', handleFolderCreated);
+    socket.on('document-created', handleDocumentCreated);
+    socket.on('folder-updated', handleFolderUpdated);
+    socket.on('document-deleted', handleDocumentDeleted);
+    socket.on('folder-deleted', handleFolderDeleted);
+
+    // If already connected, load immediately
+    if (socket.connected) {
+      setIsConnected(true);
+      setIsLoading(false);
+      loadFileStructure();
+    }
+
+    // Cleanup
+    return () => {
+      socket.off('authenticated', handleAuthenticated);
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('folder-created', handleFolderCreated);
+      socket.off('document-created', handleDocumentCreated);
+      socket.off('folder-updated', handleFolderUpdated);
+      socket.off('document-deleted', handleDocumentDeleted);
+      socket.off('folder-deleted', handleFolderDeleted);
+    };
+  }, []);
+
+  // Build tree whenever folders or documents change
   useEffect(() => {
     const treeData = buildFolderTree(folders, documents);
     setTree(treeData);
   }, [folders, documents]);
 
-  const loadFileStructure = () => {
-    if (!isConnected || !userId) return;
+  const loadFileStructure = async () => {
+    console.log('Loading file structure...');
+    
+    // Try REST API first as fallback
+    try {
+      const res = await fetch(`${apiUrl}/folders`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeader(),
+        },
+      });
+      const foldersData = await res.json();
 
-    socketService.getFileStructure(userId, (data) => {
-      setFolders(data.folders || []);
-      setDocuments(data.documents || []);
-    });
+      const res2 = await fetch(`${apiUrl}/documents`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeader(),
+        },
+      });
+      const docsData = await res2.json();
+
+      setFolders(foldersData.folders || []);
+      setDocuments(docsData.documents || []);
+      
+      console.log('✅ Loaded via REST:', {
+        folders: foldersData.folders?.length || 0,
+        documents: docsData.documents?.length || 0
+      });
+    } catch (error) {
+      console.error('Error loading file structure:', error);
+      
+      // Fallback to socket if REST fails
+      if (socketService.isConnected()) {
+        socketService.getFileStructure((data) => {
+          setFolders(data.folders || []);
+          setDocuments(data.documents || []);
+          console.log('✅ Loaded via Socket:', {
+            folders: data.folders?.length || 0,
+            documents: data.documents?.length || 0
+          });
+        });
+      }
+    }
   };
 
   const buildFolderTree = (folders, documents) => {
     const folderMap = new Map();
     const rootFolders = [];
 
+    // Build folder map
     folders.forEach(folder => {
       folderMap.set(folder.id, {
         ...folder,
         children: [],
+        type: 'folder',
       });
     });
 
+    // Organize folders into tree
     folders.forEach(folder => {
       const node = folderMap.get(folder.id);
       if (folder.parent_id === null) {
@@ -90,13 +176,15 @@ export default function FileExplorer({ userId, onDocumentSelect, currentDocument
       }
     });
 
+    // Add documents to their folders or root
     documents.forEach(doc => {
+      const docNode = { ...doc, type: 'document' };
       if (doc.folder_id === null) {
-        rootFolders.push(doc);
+        rootFolders.push(docNode);
       } else {
         const folder = folderMap.get(doc.folder_id);
         if (folder) {
-          folder.children.push(doc);
+          folder.children.push(docNode);
         }
       }
     });
@@ -104,55 +192,165 @@ export default function FileExplorer({ userId, onDocumentSelect, currentDocument
     return rootFolders;
   };
 
-  const handleCreateDocument = (folderId = null) => {
-    if (!isConnected) return;
-    socketService.createDocument(
-      'Untitled Document',
-      folderId,
-      userId,
-      (response) => {
-        console.log('Document created:', response);
-      }
-    );
-  };
+  const handleCreateDocument = async (folderId = null) => {
+    if (!isConnected) {
+      alert('Not connected to server');
+      return;
+    }
 
-  const handleCreateFolder = () => {
-    if (!newFolderName.trim() || !isConnected) return;
-
-    socketService.createFolder(newFolderName, null, userId, (response) => {
-      console.log('Folder created:', response);
-      setNewFolderName('');
-      setShowNewFolderDialog(false);
-    });
-  };
-
-  const handleDeleteDocument = (documentId) => {
-    if (window.confirm('Delete this document?')) {
-      socketService.deleteDocument(documentId, userId, () => {
-        console.log('Document deleted');
+    try {
+      // Use REST API for document creation
+      const res = await fetch(`${apiUrl}/documents`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeader(),
+        },
+        body: JSON.stringify({
+          name: 'Untitled Document',
+          content: JSON.stringify({
+            root: {
+              children: [],
+              direction: null,
+              format: '',
+              indent: 0,
+              type: 'root',
+              version: 1,
+            },
+          }),
+          folderId,
+        }),
       });
+
+      if (!res.ok) {
+        throw new Error('Failed to create document');
+      }
+
+      const data = await res.json();
+      console.log('✅ Document created:', data);
+      
+      loadFileStructure();
+      
+      if (data.document && onDocumentSelect) {
+        onDocumentSelect(data.document);
+      }
+    } catch (error) {
+      console.error('Error creating document:', error);
+      alert('Failed to create document');
     }
   };
 
-  const handleDeleteFolder = (folderId) => {
-    if (window.confirm('Delete folder and all its contents?')) {
-      socketService.deleteFolder(folderId, userId, () => {
-        console.log('Folder deleted');
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+
+    if (!isConnected) {
+      alert('Not connected to server');
+      return;
+    }
+
+    try {
+      // Use REST API for folder creation
+      const res = await fetch(`${apiUrl}/folders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeader(),
+        },
+        body: JSON.stringify({
+          name: newFolderName,
+          parentId: null,
+        }),
       });
+
+      if (!res.ok) {
+        throw new Error('Failed to create folder');
+      }
+
+      const data = await res.json();
+      console.log('✅ Folder created:', data);
+      
+      setNewFolderName('');
+      setShowNewFolderDialog(false);
+      loadFileStructure();
+    } catch (error) {
+      console.error('Error creating folder:', error);
+      alert('Failed to create folder');
+    }
+  };
+
+  const handleDeleteDocument = async (documentId) => {
+    if (!window.confirm('Delete this document?')) return;
+
+    try {
+      const res = await fetch(`${apiUrl}/documents/${documentId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeader(),
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete document');
+      }
+
+      console.log('✅ Document deleted');
+      loadFileStructure();
+      
+      // Clear current document if it was deleted
+      if (currentDocumentId === documentId && onDocumentSelect) {
+        onDocumentSelect(null);
+      }
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      alert('Failed to delete document');
+    }
+  };
+
+  const handleDeleteFolder = async (folderId) => {
+    if (!window.confirm('Delete folder and all its contents?')) return;
+
+    try {
+      const res = await fetch(`${apiUrl}/folders/${folderId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeader(),
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to delete folder');
+      }
+
+      console.log('✅ Folder deleted');
+      loadFileStructure();
+    } catch (error) {
+      console.error('Error deleting folder:', error);
+      alert('Failed to delete folder');
     }
   };
 
   const handleRenameDocument = async (documentId, newName) => {
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
-      await fetch(`${apiUrl}/documents/${documentId}`, {
+      const res = await fetch(`${apiUrl}/documents/${documentId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeader(),
+        },
         body: JSON.stringify({ name: newName }),
       });
+
+      if (!res.ok) {
+        throw new Error('Failed to rename document');
+      }
+
+      console.log('✅ Document renamed');
       loadFileStructure();
     } catch (error) {
       console.error('Error renaming document:', error);
+      alert('Failed to rename document');
     }
   };
 
@@ -163,7 +361,7 @@ export default function FileExplorer({ userId, onDocumentSelect, currentDocument
         <div className="file-explorer-actions">
           <button
             onClick={() => handleCreateDocument()}
-            disabled={!isConnected}
+            disabled={!isConnected || isLoading}
             title="New Document"
             className="icon-btn"
           >
@@ -171,7 +369,7 @@ export default function FileExplorer({ userId, onDocumentSelect, currentDocument
           </button>
           <button
             onClick={() => setShowNewFolderDialog(true)}
-            disabled={!isConnected}
+            disabled={!isConnected || isLoading}
             title="New Folder"
             className="icon-btn"
           >
@@ -203,11 +401,19 @@ export default function FileExplorer({ userId, onDocumentSelect, currentDocument
       )}
 
       <div className="file-tree">
-        {!isConnected && <div className="loading">Connecting...</div>}
-        {isConnected && tree.length === 0 && (
-          <div className="empty-state">No documents yet. Create one to get started!</div>
+        {isLoading && <div className="loading">Connecting...</div>}
+        {!isLoading && !isConnected && (
+          <div className="error-state">
+            <p>Connection lost</p>
+            <button onClick={() => window.location.reload()}>Retry</button>
+          </div>
         )}
-        {isConnected && tree.length > 0 && (
+        {!isLoading && isConnected && tree.length === 0 && (
+          <div className="empty-state">
+            No documents yet. Create one to get started!
+          </div>
+        )}
+        {!isLoading && isConnected && tree.length > 0 && (
           <DocumentTree
             items={tree}
             onDocumentSelect={onDocumentSelect}
