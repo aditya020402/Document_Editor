@@ -1,0 +1,39 @@
+// Update handleDeleteFolder to ask about cascade
+const handleDeleteFolder = async (folderId) => {
+  const cascade = window.confirm(
+    'Delete folder and all its contents? Click OK to delete everything, Cancel to abort.'
+  );
+  
+  if (!cascade) return;
+
+  try {
+    const res = await fetch(`${apiUrl}/folders/${folderId}?cascade=true`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeader(),
+      },
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      if (data.code === 'FOLDER_NOT_EMPTY') {
+        const forceDelete = window.confirm(
+          'Folder is not empty. Delete all contents?'
+        );
+        if (forceDelete) {
+          // Retry with cascade
+          return handleDeleteFolder(folderId);
+        }
+        return;
+      }
+      throw new Error('Failed to delete folder');
+    }
+
+    console.log('✅ Folder deleted');
+    loadFileStructure();
+  } catch (error) {
+    console.error('Error deleting folder:', error);
+    alert('Failed to delete folder');
+  }
+};
