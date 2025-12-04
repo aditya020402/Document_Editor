@@ -1,0 +1,144 @@
+/* src/components/DocumentTree.css - Update these styles */
+
+.tree-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+  position: relative;
+  gap: 8px;
+}
+
+.tree-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.tree-item.active {
+  background-color: rgba(59, 130, 246, 0.1);
+  border-left: 3px solid #3b82f6;
+}
+
+.tree-item.drag-over {
+  background-color: rgba(59, 130, 246, 0.15);
+  border: 2px dashed #3b82f6;
+}
+
+.tree-toggle {
+  width: 16px;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.tree-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.tree-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  min-width: 0; /* Important for text-overflow */
+}
+
+.tree-rename-input {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  font-size: 14px;
+  outline: none;
+  min-width: 100px;
+}
+
+/* Menu button - always visible on hover OR when active */
+.tree-menu-btn {
+  opacity: 0;
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 18px;
+  border-radius: 4px;
+  transition: opacity 0.15s, background-color 0.15s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* Show menu button on hover */
+.tree-item:hover .tree-menu-btn {
+  opacity: 1;
+}
+
+/* Show menu button when menu is open */
+.tree-item:has(.tree-context-menu) .tree-menu-btn {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.tree-menu-btn:hover {
+  background-color: rgba(0, 0, 0, 0.15);
+}
+
+/* Context menu */
+.tree-context-menu {
+  position: absolute;
+  top: 100%;
+  right: 8px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 160px;
+  padding: 4px;
+  margin-top: 4px;
+}
+
+.tree-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: background-color 0.15s;
+  white-space: nowrap;
+}
+
+.tree-context-menu button:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.tree-context-menu button.danger {
+  color: #dc2626;
+}
+
+.tree-context-menu button.danger:hover {
+  background-color: rgba(220, 38, 38, 0.1);
+}
+
+.tree-children {
+  margin-left: 0;
+}
+
+/* Dragging styles */
+.tree-item[draggable="true"] {
+  cursor: grab;
+}
+
+.tree-item[draggable="true"]:active {
+  cursor: grabbing;
+  opacity: 0.5;
+}
