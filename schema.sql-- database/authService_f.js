@@ -58,6 +58,25 @@ export function authHeader() {
 }
 
 
+export async function logout() {
+  const refreshToken = getRefreshToken();
+  
+  try {
+    await fetch(`${API_URL}/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeader(),
+      },
+      body: JSON.stringify({ refreshToken }),
+    });
+  } catch (err) {
+    console.error('Logout request failed:', err);
+  }
+  
+  clearAuth();
+}
+
 // ========================================
 // Token Refresh
 // ========================================
@@ -105,7 +124,6 @@ export async function refreshAccessToken() {
 
   return refreshPromise;
 }
-
 // ========================================
 // Auth Header
 // ========================================
