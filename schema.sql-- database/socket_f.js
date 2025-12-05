@@ -1,6 +1,7 @@
-// src/utils/socket.js
+// src/utils/socket.js (Editor)
+// admin-frontend/src/utils/socket.js (Admin)
 import { io } from 'socket.io-client';
-import { getToken, clearAuth } from '../services/authService';
+import { getToken, refreshAccessToken, clearAuth } from '../services/authService';
 
 const SOCKET_URL = process.env.REACT_APP_SOCKET_URL || 'http://localhost:3001';
 
@@ -9,11 +10,13 @@ class SocketService {
     this.socket = null;
     this.currentDocument = null;
     this.listeners = new Map();
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
   }
 
-  connect() {
+  async connect() {
     // Check for token first
-    const token = getToken();
+    let token = getToken();
     
     if (!token) {
       console.error('❌ No auth token found');
@@ -25,36 +28,57 @@ class SocketService {
       return this.socket;
     }
 
+    console.log('🔌 Connecting socket with token...');
+
     this.socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: this.maxReconnectAttempts,
       auth: {
-        token, // Send JWT in handshake
-      },
+        token
+      }
     });
 
     this.socket.on('connect', () => {
       console.log('✅ Socket connected:', this.socket.id);
+      this.reconnectAttempts = 0;
     });
 
     this.socket.on('authenticated', (data) => {
-      console.log('✅ Socket authenticated for user:', data.userId);
+      console.log('✅ Socket authenticated:', data);
     });
 
     this.socket.on('disconnect', (reason) => {
       console.log('❌ Socket disconnected:', reason);
     });
 
-    this.socket.on('connect_error', (error) => {
+    this.socket.on('connect_error', async (error) => {
       console.error('❌ Socket connection error:', error.message);
       
-      // If auth error, force logout
+      // If auth error, try refreshing token
       if (error.message.includes('Authentication') || 
           error.message.includes('token') ||
-          error.message.includes('jwt')) {
-        this.handleAuthFailure();
+          error.message.includes('jwt') ||
+          error.message.includes('expired')) {
+        
+        console.log('🔄 Attempting to refresh token for socket reconnection...');
+        
+        try {
+          await refreshAccessToken();
+          
+          // Update socket auth with new token
+          const newToken = getToken();
+          if (this.socket) {
+            this.socket.auth = { token: newToken };
+            this.socket.connect();
+          }
+          
+          console.log('✅ Socket reconnecting with new token');
+        } catch (err) {
+          console.error('❌ Token refresh failed for socket');
+          this.handleAuthFailure();
+        }
       }
     });
 
@@ -67,18 +91,18 @@ class SocketService {
 
   handleAuthFailure() {
     console.warn('⚠️ Authentication failed - redirecting to login');
-    clearAuth(); // Clear token and user from localStorage
+    clearAuth();
     
-    // Disconnect socket if connected
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
 
-    // Redirect to login
     window.location.href = '/login';
   }
 
+  // ... rest of socket methods remain the same
+  
   joinDocument(documentId, callback) {
     if (!this.socket?.connected) {
       console.error('Socket not connected');
@@ -130,46 +154,6 @@ class SocketService {
     }
   }
 
-  createDocument(name, folderId, callback) {
-    if (!this.socket?.connected) return;
-
-    this.socket.emit('create-document', { name, folderId });
-    
-    if (callback) {
-      this.socket.once('document-created', callback);
-    }
-  }
-
-  deleteDocument(documentId, callback) {
-    if (!this.socket?.connected) return;
-
-    this.socket.emit('delete-document', { documentId });
-    
-    if (callback) {
-      this.socket.once('document-deleted', callback);
-    }
-  }
-
-  createFolder(name, parentId, callback) {
-    if (!this.socket?.connected) return;
-
-    this.socket.emit('create-folder', { name, parentId });
-    
-    if (callback) {
-      this.socket.once('folder-created', callback);
-    }
-  }
-
-  deleteFolder(folderId, callback) {
-    if (!this.socket?.connected) return;
-
-    this.socket.emit('delete-folder', { folderId });
-    
-    if (callback) {
-      this.socket.once('folder-deleted', callback);
-    }
-  }
-
   getFileStructure(callback) {
     if (!this.socket?.connected) return;
 
@@ -197,14 +181,12 @@ class SocketService {
     if (callback) {
       this.socket.off(event, callback);
     } else {
-      // Remove all listeners for this event
       this.socket.off(event);
     }
   }
 
   disconnect() {
     if (this.socket) {
-      // Remove all custom listeners
       this.listeners.forEach((callbacks, event) => {
         callbacks.forEach(callback => this.socket.off(event, callback));
       });
@@ -216,7 +198,6 @@ class SocketService {
     }
   }
 
-  // Check if socket is connected
   isConnected() {
     return this.socket?.connected || false;
   }
