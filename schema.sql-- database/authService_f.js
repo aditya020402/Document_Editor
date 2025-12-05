@@ -56,3 +56,98 @@ export function authHeader() {
   if (!token) return {};
   return { Authorization: `Bearer ${token}` };
 }
+
+
+// ========================================
+// Token Refresh
+// ========================================
+let refreshPromise = null;
+
+export async function refreshAccessToken() {
+  // Prevent multiple simultaneous refresh requests
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = (async () => {
+    try {
+      const refreshToken = getRefreshToken();
+      
+      if (!refreshToken) {
+        throw new Error('No refresh token');
+      }
+
+      console.log('🔄 Refreshing access token...');
+
+      const res = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      const data = await res.json();
+      
+      if (!res.ok) {
+        clearAuth();
+        throw new Error(data.error || 'Token refresh failed');
+      }
+
+      const user = getCurrentUser();
+      saveAuth(data.accessToken, data.refreshToken, user);
+      
+      console.log('✅ Access token refreshed');
+      return data.accessToken;
+      
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+// ========================================
+// Auth Header
+// ========================================
+export function authHeader() {
+  const token = getToken();
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+}
+
+// ========================================
+// Fetch with Auto-Refresh
+// ========================================
+export async function authFetch(url, options = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...authHeader(),
+    ...(options.headers || {}),
+  };
+
+  let res = await fetch(url, { ...options, headers });
+
+  // If token expired, try refresh once
+  if (res.status === 401) {
+    try {
+      const data = await res.json();
+      
+      if (data.code === 'TOKEN_EXPIRED') {
+        console.log('⚠️ Token expired, attempting refresh...');
+        
+        await refreshAccessToken();
+        
+        // Retry with new token
+        headers.Authorization = `Bearer ${getToken()}`;
+        res = await fetch(url, { ...options, headers });
+      }
+    } catch (err) {
+      console.error('❌ Token refresh failed:', err);
+      clearAuth();
+      window.location.href = '/login';
+      throw err;
+    }
+  }
+
+  return res;
+}
